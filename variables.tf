@@ -1,6 +1,7 @@
 variable "name" {
   type        = string
   description = "Name of the Application Security Group resource"
+
   validation {
     condition     = can(regex("^[[:alnum:]]([[:alnum:]_.-]{0,78}?[[:alnum:]_])?$", var.name))
     error_message = <<EOT
@@ -15,8 +16,6 @@ variable "resource_group_name" {
   type        = string
   description = "The resource group where the resources will be deployed."
 }
-
-# required AVM interfaces
 
 variable "enable_telemetry" {
   type        = bool
