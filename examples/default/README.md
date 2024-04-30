@@ -22,6 +22,8 @@ provider "azurerm" {
   features {}
 }
 
+
+## Section to provide a random Azure region for the resource group
 # This allows us to randomize the region for the resource group.
 module "regions" {
   source  = "Azure/regions/azurerm"
@@ -33,6 +35,7 @@ resource "random_integer" "region_index" {
   max = length(module.regions.regions) - 1
   min = 0
 }
+## End of section to provide a random Azure region for the resource group
 
 # This ensures we have unique CAF compliant names for our resources.
 module "naming" {
@@ -47,12 +50,15 @@ resource "azurerm_resource_group" "this" {
 }
 
 # This is the module call
-module "asg" {
+# Do not specify location here due to the randomization above.
+# Leaving location as `null` will cause the module to use the resource group location
+# with a data source.
+module "test" {
   source = "../../"
   # source             = "Azure/avm-<res/ptn>-<name>/azurerm"
   # ...
-  enable_telemetry    = var.enable_telemetry
-  name                = module.naming.application_security_group.name_unique
+  enable_telemetry    = var.enable_telemetry # see variables.tf
+  name                = "TODO"               # TODO update with module.naming.<RESOURCE_TYPE>.name_unique
   resource_group_name = azurerm_resource_group.this.name
 }
 ```
@@ -110,12 +116,6 @@ No outputs.
 
 The following Modules are called:
 
-### <a name="module_asg"></a> [asg](#module\_asg)
-
-Source: ../../
-
-Version:
-
 ### <a name="module_naming"></a> [naming](#module\_naming)
 
 Source: Azure/naming/azurerm
@@ -127,6 +127,12 @@ Version: >= 0.3.0
 Source: Azure/regions/azurerm
 
 Version: >= 0.3.0
+
+### <a name="module_test"></a> [test](#module\_test)
+
+Source: ../../
+
+Version:
 
 <!-- markdownlint-disable-next-line MD041 -->
 ## Data Collection
