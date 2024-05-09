@@ -146,7 +146,11 @@ Default: `null`
 
 ## Outputs
 
-No outputs.
+The following outputs are exported:
+
+### <a name="output_application_security_group"></a> [application\_security\_group](#output\_application\_security\_group)
+
+Description: n/a
 
 ## Modules
 
