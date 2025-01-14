@@ -1,9 +1,3 @@
-data "azurerm_resource_group" "parent" {
-  count = var.location == null ? 1 : 0
-
-  name = var.resource_group_name
-}
-
 resource "azurerm_application_security_group" "this" {
   location            = coalesce(var.location, local.resource_group_location)
   name                = var.name
