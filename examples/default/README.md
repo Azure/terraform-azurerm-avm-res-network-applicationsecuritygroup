@@ -6,6 +6,7 @@ This deploys the module in its simplest form.
 ```hcl
 terraform {
   required_version = ">= 1.3.0"
+
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
@@ -49,12 +50,13 @@ resource "azurerm_resource_group" "this" {
 # This is the module call
 module "asg" {
   source = "../../"
-  # source             = "Azure/avm-<res/ptn>-<name>/azurerm"
-  # ...
-  enable_telemetry    = var.enable_telemetry
+
+  location            = azurerm_resource_group.this.location
   name                = module.naming.application_security_group.name_unique
   resource_group_name = azurerm_resource_group.this.name
-  location            = azurerm_resource_group.this.location
+  # source             = "Azure/avm-<res/ptn>-<name>/azurerm"
+  # ...
+  enable_telemetry = var.enable_telemetry
 }
 ```
 
