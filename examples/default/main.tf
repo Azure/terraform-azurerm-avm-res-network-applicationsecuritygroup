@@ -1,5 +1,6 @@
 terraform {
   required_version = ">= 1.9, < 2.0"
+
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
@@ -47,5 +48,5 @@ module "asg" {
   location            = azurerm_resource_group.this.location
   name                = module.naming.application_security_group.name_unique
   resource_group_name = azurerm_resource_group.this.name
-  enable_telemetry = var.enable_telemetry
+  enable_telemetry    = var.enable_telemetry
 }
