@@ -6,5 +6,8 @@
   "owners": [
     "MinHeinA"
   ],
-  "telemetryIdPrefix": "46d3xtrf.res.5693bde"
+  "telemetryIdPrefix": "46d3xtrf.res.5693bde",
+  "alternativeNames": [
+    "ASG"
+  ]
 }
