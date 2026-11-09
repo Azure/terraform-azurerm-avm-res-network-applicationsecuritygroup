@@ -33,7 +33,9 @@ Enabled telemetry, older baselines, deliberate ASG replacement, immutable
 RBAC replacement under an unchanged lock, ReadOnly, cross-tenant/delegated
 or conditional assignments, external NIC/private-endpoint memberships,
 non-default API versions and nonempty ignored body paths remain unverified
-in Azure. Clean-commit `avm pr-check` and remote CI are still pending.
+in Azure. Clean-commit `avm pr-check` passed for commit `82407cf` on
+2026-11-09, along with `avm pre-commit` and 14 mocked tests. Subsequent
+publication candidates require fresh affected checks; remote CI is separate.
 
 ## Prerequisites and input changes
 
