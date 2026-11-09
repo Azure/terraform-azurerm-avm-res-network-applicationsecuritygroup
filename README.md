@@ -13,29 +13,47 @@ This Terraform module is designed to create Application Security Groups.
 
 ## Limitations
 
-* The module does not support creating network security rules yet.
+* Network security rules and NIC/private-endpoint ASG memberships belong to their respective resource owners, not to this module. This module does not write those resources.
+
+## AzAPI implementation and compatibility
+
+The module uses `Azure/azapi ~> 2.12` for the application security group and its optional locks and role assignments. Terraform 1.11 or later is required. Configure AzAPI with the intended subscription and authentication; an AzureRM provider alias does not configure AzAPI.
+
+Supply the existing resource group's full ARM ID as `parent_id`; the former `resource_group_name` input is no longer accepted. Name, location and parent changes replace the ASG. Tags remain mutable.
+
+`resource_id` remains the ASG ARM ID. The `application_security_group` output is now an explicit compatibility object containing `id`, `name`, `location`, `resource_group_name` and `tags`, rather than the entire AzureRM provider object. Provider-only attributes such as `timeouts` are not preserved. Use `name` and `resource_id` for new consumers.
+
+Role names are resolved case-insensitively at the existing resource-group scope. Role assignment descriptions, previously accepted but not forwarded, are now sent to Azure. `skip_service_principal_aad_check = true` supplies `principalType = "ServicePrincipal"` when no explicit principal type is given. Existing assignment GUIDs are retained by the migration; immutable input changes request replacement. Do not specify conflicting assignment names or duplicate principal/role pairs.
+
+The lock's default name and notes are preserved. A 30-second removal barrier orders full teardown after lock removal; it is not an update-time unlock or a guarantee of Azure propagation. Remove a ReadOnly lock in a separate approved apply before updates. Selective RBAC replacement under an unchanged CanNotDelete lock also requires staged unlock/relock.
+
+Telemetry remains enabled by default and uses the managed subscription-scoped empty deployment introduced in v0.2.0. The interfaces utility also reports its own deployment when enabled. Both need subscription deployment read/write/delete permissions. Set `enable_telemetry = false` to opt out of both. Their template apply timestamps intentionally change on normal plans; do not discount other infrastructure drift. The authored AzAPI controls apply to ASG, RBAC and lock resources; governance-managed telemetry currently uses fixed generated settings.
+
+See [UPGRADE.md](UPGRADE.md) for the module-owned state path and its current verification limits.
 
 <!-- markdownlint-disable MD033 -->
 ## Requirements
 
 The following requirements are needed by this module:
 
-- <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) (>= 1.9, < 2.0)
+- <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) (>= 1.11, < 2.0)
 
 - <a name="requirement_azapi"></a> [azapi](#requirement\_azapi) (~> 2.12)
 
-- <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) (~> 4.0)
+- <a name="requirement_time"></a> [time](#requirement\_time) (~> 0.13)
 
 ## Resources
 
 The following resources are used by this module:
 
+- [azapi_resource.lock](https://registry.terraform.io/providers/Azure/azapi/latest/docs/resources/resource) (resource)
+- [azapi_resource.role_assignments](https://registry.terraform.io/providers/Azure/azapi/latest/docs/resources/resource) (resource)
 - [azapi_resource.telemetry](https://registry.terraform.io/providers/Azure/azapi/latest/docs/resources/resource) (resource)
-- [azurerm_application_security_group.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/application_security_group) (resource)
-- [azurerm_management_lock.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/management_lock) (resource)
-- [azurerm_role_assignment.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/role_assignment) (resource)
+- [azapi_resource.this](https://registry.terraform.io/providers/Azure/azapi/latest/docs/resources/resource) (resource)
 - [terraform_data.telemetry](https://registry.terraform.io/providers/hashicorp/terraform/latest/docs/resources/data) (resource)
+- [time_sleep.lock_removal](https://registry.terraform.io/providers/hashicorp/time/latest/docs/resources/sleep) (resource)
 - [azapi_client_config.telemetry](https://registry.terraform.io/providers/Azure/azapi/latest/docs/data-sources/client_config) (data source)
+- [azapi_resource_list.role_definitions](https://registry.terraform.io/providers/Azure/azapi/latest/docs/data-sources/resource_list) (data source)
 
 <!-- markdownlint-disable MD013 -->
 ## Required Inputs
@@ -50,13 +68,13 @@ Type: `string`
 
 ### <a name="input_name"></a> [name](#input\_name)
 
-Description: Name of the Application Security Group resource
+Description: Name of the Application Security Group resource. Changing this forces replacement.
 
 Type: `string`
 
-### <a name="input_resource_group_name"></a> [resource\_group\_name](#input\_resource\_group\_name)
+### <a name="input_parent_id"></a> [parent\_id](#input\_parent\_id)
 
-Description: The resource group where the resources will be deployed.
+Description: The fully-qualified ARM resource ID of the existing resource group into which the application security group will be deployed. The module does not create this scope.
 
 Type: `string`
 
@@ -74,19 +92,83 @@ Type: `bool`
 
 Default: `true`
 
-### <a name="input_lock"></a> [lock](#input\_lock)
+### <a name="input_ignore_body_changes"></a> [ignore\_body\_changes](#input\_ignore\_body\_changes)
 
-Description:   Controls the Resource Lock configuration for this resource. The following properties can be specified:
+Description: Body-relative paths to ignore for each AzAPI resource. Paths use dot notation, not list indices. Changes take effect only after apply. Ignored configuration is not sent to Azure until the path is removed.
 
-  - `kind` - (Required) The type of lock. Possible values are `\"CanNotDelete\"` and `\"ReadOnly\"`.
-  - `name` - (Optional) The name of the lock. If not specified, a name will be generated based on the `kind` value. Changing this forces the creation of a new resource.
+- `network_application_security_groups` - Paths ignored on the application security group.
+- `authorization_locks` - Paths ignored on the management lock.
+- `authorization_role_assignments` - Paths ignored on role assignments.
 
 Type:
 
 ```hcl
 object({
-    kind = string
-    name = optional(string, null)
+    network_application_security_groups = optional(list(string), [])
+    authorization_locks                 = optional(list(string), [])
+    authorization_role_assignments      = optional(list(string), [])
+  })
+```
+
+Default: `{}`
+
+### <a name="input_lock"></a> [lock](#input\_lock)
+
+Description: Controls the Resource Lock configuration for this resource. The following properties can be specified:
+
+- `kind` - (Required) The type of lock. Possible values are `\"CanNotDelete\"` and `\"ReadOnly\"`.
+- `name` - (Optional) The name of the lock. If not specified, a name will be generated based on the `kind` value. Changing this forces the creation of a new resource.
+- `notes` - (Optional) Notes about the lock. This value maps to `Microsoft.Authorization/locks.properties.notes`.
+
+Type:
+
+```hcl
+object({
+    kind  = string
+    name  = optional(string, null)
+    notes = optional(string, null)
+  })
+```
+
+Default: `null`
+
+### <a name="input_resource_types"></a> [resource\_types](#input\_resource\_types)
+
+Description: AzAPI resource types and API versions used by the module.
+
+- `network_application_security_groups` - Application security group resource type and API version.
+- `authorization_locks` - Management lock resource type and API version.
+- `authorization_role_assignments` - Role assignment resource type and API version.
+
+Type:
+
+```hcl
+object({
+    network_application_security_groups = optional(string, "Microsoft.Network/applicationSecurityGroups@2025-01-01")
+    authorization_locks                 = optional(string, "Microsoft.Authorization/locks@2020-05-01")
+    authorization_role_assignments      = optional(string, "Microsoft.Authorization/roleAssignments@2022-04-01")
+  })
+```
+
+Default: `{}`
+
+### <a name="input_retry"></a> [retry](#input\_retry)
+
+Description: Retry configuration applied to every `azapi` resource managed by the module (root resource and all submodules). Defaults to `null` (no custom retry).
+
+- `error_message_regex`  - (Optional) A list of regex patterns matching error messages that trigger a retry.
+- `interval_seconds`     - (Optional) Initial interval between retries in seconds.
+- `max_interval_seconds` - (Optional) Maximum interval between retries in seconds.
+
+See <https://registry.terraform.io/providers/Azure/azapi/latest/docs/resources/resource#retry> for full semantics.
+
+Type:
+
+```hcl
+object({
+    error_message_regex  = optional(list(string))
+    interval_seconds     = optional(number)
+    max_interval_seconds = optional(number)
   })
 ```
 
@@ -94,23 +176,25 @@ Default: `null`
 
 ### <a name="input_role_assignments"></a> [role\_assignments](#input\_role\_assignments)
 
-Description:   A map of role assignments to create on the <RESOURCE>. The map key is deliberately arbitrary to avoid issues where map keys maybe unknown at plan time.
+Description: A map of role assignments to create on the application security group. The map key is deliberately arbitrary to avoid issues where map keys maybe unknown at plan time.
 
-  - `role_definition_id_or_name` - The ID or name of the role definition to assign to the principal.
-  - `principal_id` - The ID of the principal to assign the role to.
-  - `description` - (Optional) The description of the role assignment.
-  - `skip_service_principal_aad_check` - (Optional) If set to true, skips the Azure Active Directory check for the service principal in the tenant. Defaults to false.
-  - `condition` - (Optional) The condition which will be used to scope the role assignment.
-  - `condition_version` - (Optional) The version of the condition syntax. Leave as `null` if you are not using a condition, if you are then valid values are '2.0'.
-  - `delegated_managed_identity_resource_id` - (Optional) The delegated Azure Resource Id which contains a Managed Identity. Changing this forces a new resource to be created. This field is only used in cross-tenant scenario.
-  - `principal_type` - (Optional) The type of the `principal_id`. Possible values are `User`, `Group` and `ServicePrincipal`. It is necessary to explicitly set this attribute when creating role assignments if the principal creating the assignment is constrained by ABAC rules that filters on the PrincipalType attribute.
+- `name` - (Optional) The name of the role assignment. If not set, a random UUID will be generated. Changing this forces the creation of a new resource.
+- `role_definition_id_or_name` - The ID or name of the role definition to assign to the principal.
+- `principal_id` - The ID of the principal to assign the role to.
+- `description` - (Optional) The description of the role assignment.
+- `skip_service_principal_aad_check` - (Optional) If set to true, skips the Azure Active Directory check for the service principal in the tenant. Defaults to false.
+- `condition` - (Optional) The condition which will be used to scope the role assignment.
+- `condition_version` - (Optional) The version of the condition syntax. Leave as `null` if you are not using a condition, if you are then valid values are '2.0'.
+- `delegated_managed_identity_resource_id` - (Optional) The delegated Azure Resource Id which contains a Managed Identity. Changing this forces a new resource to be created. This field is only used in cross-tenant scenario.
+- `principal_type` - (Optional) The type of the `principal_id`. Possible values are `User`, `Group` and `ServicePrincipal`. It is necessary to explicitly set this attribute when creating role assignments if the principal creating the assignment is constrained by ABAC rules that filters on the PrincipalType attribute.
 
-  > Note: only set `skip_service_principal_aad_check` to true if you are assigning a role to a service principal.
+> Note: only set `skip_service_principal_aad_check` to true if you are assigning a role to a service principal.
 
 Type:
 
 ```hcl
 map(object({
+    name                                   = optional(string, null)
     role_definition_id_or_name             = string
     principal_id                           = string
     description                            = optional(string, null)
@@ -132,13 +216,39 @@ Type: `map(string)`
 
 Default: `null`
 
+### <a name="input_timeouts"></a> [timeouts](#input\_timeouts)
+
+Description: Default per-operation timeouts applied to every `azapi` resource managed by the module. Defaults to `null` (provider defaults). Each value is a Go duration string (e.g. `30m`, `1h`).
+
+- `create` - (Optional) Timeout for create operations.
+- `read`   - (Optional) Timeout for read operations.
+- `update` - (Optional) Timeout for update operations.
+- `delete` - (Optional) Timeout for delete operations.
+
+Type:
+
+```hcl
+object({
+    create = optional(string)
+    read   = optional(string)
+    update = optional(string)
+    delete = optional(string)
+  })
+```
+
+Default: `null`
+
 ## Outputs
 
 The following outputs are exported:
 
 ### <a name="output_application_security_group"></a> [application\_security\_group](#output\_application\_security\_group)
 
-Description: The Azure resource of the application security group.
+Description: Compatibility projection of the application security group: id, name, location, resource\_group\_name and tags. This is not a provider resource object.
+
+### <a name="output_name"></a> [name](#output\_name)
+
+Description: The name of the application security group.
 
 ### <a name="output_resource_id"></a> [resource\_id](#output\_resource\_id)
 
@@ -146,7 +256,13 @@ Description: The Azure resource id of the application security group.
 
 ## Modules
 
-No modules.
+The following Modules are called:
+
+### <a name="module_avm_interfaces"></a> [avm\_interfaces](#module\_avm\_interfaces)
+
+Source: Azure/avm-utl-interfaces/azure
+
+Version: 0.10.0
 
 <!-- markdownlint-disable-next-line MD041 -->
 ## Data Collection
