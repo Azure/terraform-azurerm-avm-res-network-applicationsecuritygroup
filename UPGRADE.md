@@ -34,7 +34,7 @@ the repository's runnable examples or a managed `avm test e2e` pass.
 At the time of that historical run, deliberate replacement, unchanged-lock
 RBAC replacement, ReadOnly and external NIC memberships were unverified;
 the separate 2026-11-10 results below supersede those coverage gaps.
-Enabled telemetry, older baselines, cross-tenant/delegated or conditional
+Telemetry-enabled state upgrades, older baselines, cross-tenant/delegated or conditional
 assignments, private-endpoint memberships,
 non-default API versions for managed writes and nonempty ignored body paths remain unverified
 in Azure. Clean-commit `avm pr-check` passed for commit `82407cf` on
@@ -95,7 +95,7 @@ not automatic update-time unlocking.
 
 This coverage is one NIC/one ASG IPv4 membership. It does not establish
 multi-member mutation, cross-state handoff, private-endpoint membership,
-enabled telemetry, minimum-version Azure behavior or rollback.
+telemetry-enabled state upgrades, minimum-version Azure behavior or rollback.
 
 ## Supplemental ASG GUID API-version investigation
 
@@ -188,8 +188,15 @@ pinned reusable CI workflow's `TF_VAR_enable_telemetry=false` environment
 default without changing managed workflow files or the module's opt-out.
 The managed E2E runner distinguishes generated telemetry updates from
 infrastructure drift. CI needs subscription deployment read/write/delete
-permissions; a future CI execution, not this configuration change, must prove
-the enabled deployment and cleanup. For a local opt-out, supply
+permissions. CI run [42896798562](https://github.com/Azure/terraform-azurerm-avm-res-network-applicationsecuritygroup/actions/runs/42896798562)
+verified telemetry-enabled deployment, telemetry-aware idempotency and cleanup
+for `complete` and `interfaces` at commit `6f219de`. The default example also
+deployed and cleaned up both telemetry resources, but its idempotency inspection
+failed because the managed runner required `output_changes` in a plan for a
+root with no outputs. It now exposes the same useful `resource_id` output as
+the other examples; final CI results are tracked in the PR. The original
+failed run is not an all-example pass or enabled-state-upgrade proof.
+For a local opt-out, supply
 `-var="enable_telemetry=false"` to Terraform plan, apply and destroy.
 
 The generator shipped with Avm.Authoring 0.41.2 and interfaces 0.10.0 still

@@ -3,6 +3,7 @@
 # Default example
 
 This deploys the module in its simplest form, using an AzAPI resource group.
+The `resource_id` output exposes the deployed ASG for downstream references.
 The location is explicit (defaults to `eastus2`); no AzureRM-backed region
 discovery is required.
 
@@ -99,7 +100,11 @@ Default: `"eastus2"`
 
 ## Outputs
 
-No outputs.
+The following outputs are exported:
+
+### <a name="output_resource_id"></a> [resource\_id](#output\_resource\_id)
+
+Description: The application security group resource ID.
 
 ## Modules
 
