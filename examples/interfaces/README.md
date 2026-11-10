@@ -13,7 +13,10 @@ the application security group.
 
 The caller needs resource-group creation, identity creation, ASG, RBAC and lock
 permissions, plus subscription deployment permissions when telemetry is enabled.
-Set `enable_telemetry = false` to opt out.
+`telemetry.auto.tfvars` enables telemetry, including in CI where the reusable
+workflow otherwise disables it through an environment variable. To opt out
+locally, pass `-var="enable_telemetry=false"` to Terraform plan, apply and destroy;
+the checked-in variable file takes precedence over `TF_VAR_enable_telemetry`.
 
 Keep the assignment UUID in Terraform state; replacing it requests replacement
 of the role assignment. Before selectively replacing an assignment, remove the

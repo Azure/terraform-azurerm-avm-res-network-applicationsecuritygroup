@@ -13,9 +13,13 @@ This Terraform module is designed to create Application Security Groups.
 
 * Network security rules and NIC/private-endpoint ASG memberships belong to their respective resource owners, not to this module. This module does not write those resources.
 
+An applied released-module upgrade preserved one externally owned NIC's exact ASG membership through migration and ASG tag mutation, clearing and restoration. This does not establish private-endpoint membership or membership retargeting during ASG replacement. See [the scoped Azure evidence](UPGRADE.md#nic-membership-and-lockreplacement-verification).
+
 ## AzAPI implementation and compatibility
 
 The module uses `Azure/azapi ~> 2.12` for the application security group and its optional locks and role assignments. Terraform 1.11 or later is required. Configure AzAPI with the intended subscription and authentication; an AzureRM provider alias does not configure AzAPI.
+
+Contributors running the mocked tests need Terraform 1.11.4 or later: earlier 1.11 releases have a Terraform mocking defect with nonempty write-only arguments. This does not raise the module's runtime requirement. Exact-minimum validation and offline real-provider planning passed with Terraform 1.11.0 and AzAPI 2.12.0; live deployment and state conversion at those minimum versions remain unverified. See [minimum-version verification](UPGRADE.md#minimum-version-verification).
 
 Supply the existing resource group's full ARM ID as `parent_id`; the former `resource_group_name` input is no longer accepted. Name, location and parent changes replace the ASG. Tags remain mutable.
 
@@ -25,6 +29,10 @@ Role names are resolved case-insensitively at the existing resource-group scope.
 
 The lock's default name and notes are preserved. A 30-second removal barrier orders full teardown after lock removal; it is not an update-time unlock or a guarantee of Azure propagation. Remove a ReadOnly lock in a separate approved apply before updates. Selective RBAC replacement under an unchanged CanNotDelete lock also requires staged unlock/relock.
 
+Actual ASG name replacement with CanNotDelete and RBAC configured verified lock removal, the 30-second barrier, protected replacement and relock ordering. Separate unchanged-lock tests confirmed Azure blocks selective RBAC deletion under CanNotDelete and ASG tag updates under ReadOnly; separately staged maintenance recovered both. Ordinary full teardown with ReadOnly and RBAC configured also passed.
+
 Telemetry remains enabled by default and uses the managed subscription-scoped empty deployment introduced in v0.2.0. The interfaces utility also reports its own deployment when enabled. Both need subscription deployment read/write/delete permissions. Set `enable_telemetry = false` to opt out of both. Their template apply timestamps intentionally change on normal plans; do not discount other infrastructure drift. The authored AzAPI controls apply to ASG, RBAC and lock resources; governance-managed telemetry currently uses fixed generated settings.
+
+The root telemetry implementation is owned by the `Avm.Authoring` generator; the utility's implementation is owned by its pinned release. Neither exposes telemetry API, retry, timeout or body-ignore overrides through this module. Supported generator-profile customization exists, but does not resolve the current specification conflict or change the dependency's resources. The concrete prerequisite changes and their upgrade implications are documented under [telemetry ownership](UPGRADE.md#telemetry-ownership).
 
 See [UPGRADE.md](UPGRADE.md) for the module-owned state path and its current verification limits.
